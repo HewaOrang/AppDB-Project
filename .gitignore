@@ -74,10 +74,3 @@ Thumbs.db
 # Configuration files with sensitive data
 .env
 config.local.py
-neo4j
-java
-.env
-venv
-.pyc
-*.pyc
-__pycache__/

@@ -1,10 +1,13 @@
 """Conference Management Application - Main Module"""
-from db_sqlite import SQLiteDatabase
-from db_neo4j import Neo4jDatabase
+import mysql.connector
+from mysql.connector import Error as MySQLError
+from neo4j import GraphDatabase
+from neo4j.exceptions import Neo4jError
+import config
 
 # Global database instances
-sqlite_db = None
-neo4j_db = None
+mysql_connection = None
+neo4j_driver = None
 neo4j_available = False
 rooms_cache = None  # Cache for rooms to satisfy requirement
 
@@ -25,35 +28,139 @@ def display_menu():
     return input("Choice: ").strip()
 
 
+def option_1_view_speakers_sessions():
+    """Option 1: View Speakers & Sessions"""
+    print("Enter speaker name : ", end="")
+    speaker_name = input().strip()
+    
+    try:
+        cursor = mysql_connection.cursor(dictionary=True)
+        query = """
+        SELECT 
+            s.speakerName,
+            s.sessionTitle,
+            r.roomName
+        FROM session s
+        JOIN room r ON s.roomID = r.roomID
+        WHERE s.speakerName LIKE %s
+        ORDER BY s.speakerName, s.sessionTitle
+        """
+        cursor.execute(query, (f"%{speaker_name}%",))
+        results = cursor.fetchall()
+        cursor.close()
+        
+        print(f"Session Details For : {speaker_name}")
+        print("-" * 50)
+        
+        if results:
+            for row in results:
+                print(f"{row['speakerName']} | {row['sessionTitle']} | {row['roomName']}")
+        else:
+            print("No speakers found of that name")
+    
+    except MySQLError as err:
+        print(f"*** ERROR *** {err}")
+
+
+def option_2_view_attendees_by_company():
+    """Option 2: View Attendees by Company"""
+    while True:
+        print("Enter Company ID : ", end="")
+        try:
+            company_id = int(input().strip())
+            if company_id <= 0:
+                continue
+        except ValueError:
+            continue
+        
+        try:
+            cursor = mysql_connection.cursor(dictionary=True)
+            
+            # Check if company exists
+            company_query = "SELECT companyName FROM company WHERE companyID = %s"
+            cursor.execute(company_query, (company_id,))
+            company_result = cursor.fetchone()
+            
+            if not company_result:
+                print(f"Company with ID {company_id} doesn't exist")
+                cursor.close()
+                continue
+            
+            company_name = company_result['companyName']
+            
+            # Get attendees from this company
+            attendees_query = """
+            SELECT 
+                a.attendeeName,
+                a.attendeeDOB,
+                s.sessionTitle,
+                s.speakerName,
+                r.roomName
+            FROM attendee a
+            JOIN registration reg ON a.attendeeID = reg.attendeeID
+            JOIN session s ON reg.sessionID = s.sessionID
+            JOIN room r ON s.roomID = r.roomID
+            WHERE a.attendeeCompanyID = %s
+            ORDER BY a.attendeeName
+            """
+            
+            cursor.execute(attendees_query, (company_id,))
+            results = cursor.fetchall()
+            
+            print(f"Enter Company ID : {company_id}")
+            print(f"{company_name} Attendees")
+            print("-" * 120)
+            
+            if results:
+                for row in results:
+                    print(f"{row['attendeeName']} | {row['attendeeDOB']} | {row['sessionTitle']} | {row['speakerName']} | {row['roomName']}")
+            else:
+                print(f"No attendees found for {company_name}")
+            
+            cursor.close()
+            break
+        
+        except MySQLError as err:
+            print(f"*** ERROR *** {err}")
+            continue
+
 
 
 
 def initialize_databases():
     """Initialize database connections"""
-    global sqlite_db, neo4j_db, neo4j_available
+    global mysql_connection, neo4j_driver, neo4j_available
     
     print("Initializing database connections...")
     
-    # Initialize SQLite
-    sqlite_db = SQLiteDatabase(db_file="appdbproj.db")
-    
-    if not sqlite_db.connect():
-        print("Failed to connect to SQLite database.")
+    # Initialize MySQL
+    try:
+        mysql_connection = mysql.connector.connect(
+            host=config.MYSQL_HOST,
+            user=config.MYSQL_USER,
+            password=config.MYSQL_PASSWORD,
+            database=config.MYSQL_DATABASE
+        )
+        print("Connected to MySQL database: appdbproj")
+    except MySQLError as err:
+        print(f"Failed to connect to MySQL database: {err}")
         return False
     
     # Initialize Neo4j
-    neo4j_db = Neo4jDatabase(
-        uri="neo4j://localhost:7687",
-        user="neo4j",
-        password="password"
-    )
-    
-    if not neo4j_db.connect():
-        print("Warning: Neo4j not running. Graph features will be unavailable.")
-        print("You can still use Options 1-3 and 6.")
-        neo4j_available = False
-    else:
+    try:
+        neo4j_driver = GraphDatabase.driver(
+            config.NEO4J_URI,
+            auth=(config.NEO4J_USER, config.NEO4J_PASSWORD)
+        )
+        # Test connection with specific database
+        with neo4j_driver.session(database=config.NEO4J_DATABASE) as session:
+            session.run("RETURN 1")
+        print("Connected to Neo4j database: appdbprojNeo4j")
         neo4j_available = True
+    except Neo4jError as err:
+        print(f"Warning: Neo4j not running or connection failed: {err}")
+        print("Graph features (Options 4-5) will be unavailable.")
+        neo4j_available = False
     
     return True
 
@@ -91,11 +198,14 @@ def main():
         print("\nApplication interrupted.")
     finally:
         # Close database connections
-        if sqlite_db:
-            sqlite_db.disconnect()
-        if neo4j_db:
-            neo4j_db.disconnect()
+        if mysql_connection and mysql_connection.is_connected():
+            mysql_connection.close()
+            print("MySQL connection closed.")
+        if neo4j_driver:
+            neo4j_driver.close()
+            print("Neo4j connection closed.")
 
 
 if __name__ == "__main__":
     main()
+
