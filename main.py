@@ -125,6 +125,84 @@ def option_2_view_attendees_by_company():
             continue
 
 
+def option_3_add_new_attendee():
+    """Option 3: Add New Attendee"""
+    print("Add New Attendee")
+    print("-" * 16)
+    
+    # Get Attendee ID
+    while True:
+        print("Attendee ID : ", end="")
+        attendee_id = input().strip()
+        
+        try:
+            cursor = mysql_connection.cursor(dictionary=True)
+            check_query = "SELECT attendeeID FROM attendee WHERE attendeeID = %s"
+            cursor.execute(check_query, (attendee_id,))
+            
+            if cursor.fetchone():
+                print(f"*** ERROR *** Attendee ID: {attendee_id} already exists")
+                cursor.close()
+                continue
+            
+            cursor.close()
+            break
+        except MySQLError as err:
+            print(f"*** ERROR *** {err}")
+            continue
+    
+    # Get Name
+    print("Name : ", end="")
+    name = input().strip()
+    
+    # Get DOB
+    print("DOB : ", end="")
+    dob = input().strip()
+    
+    # Get Gender
+    print("Gender : ", end="")
+    gender = input().strip()
+    
+    if gender not in ["Male", "Female"]:
+        print("*** ERROR *** Gender must be Male/Female")
+        return
+    
+    # Get Company ID
+    while True:
+        print("Company ID : ", end="")
+        company_id = input().strip()
+        
+        try:
+            cursor = mysql_connection.cursor(dictionary=True)
+            company_check = "SELECT companyID FROM company WHERE companyID = %s"
+            cursor.execute(company_check, (company_id,))
+            
+            if not cursor.fetchone():
+                print(f"*** ERROR *** Company ID: {company_id} does not exist")
+                cursor.close()
+                continue
+            
+            cursor.close()
+            break
+        except MySQLError as err:
+            print(f"*** ERROR *** {err}")
+            continue
+    
+    # Insert the attendee
+    try:
+        cursor = mysql_connection.cursor()
+        insert_query = """
+        INSERT INTO attendee (attendeeID, attendeeName, attendeeDOB, attendeeGender, attendeeCompanyID)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        cursor.execute(insert_query, (attendee_id, name, dob, gender, company_id))
+        mysql_connection.commit()
+        cursor.close()
+        print("Attendee successfully added")
+    
+    except MySQLError as err:
+        print(f"*** ERROR *** {err}")
+
 
 
 def initialize_databases():
