@@ -204,6 +204,66 @@ def option_3_add_new_attendee():
         print(f"*** ERROR *** {err}")
 
 
+def option_4_view_connected_attendees():
+    """Option 4: View Connected Attendees"""
+    if not neo4j_available:
+        print("*** ERROR *** Neo4j is not available. Start Neo4j to use this feature.")
+        return
+    
+    print("Enter Attendee ID : ", end="")
+    try:
+        attendee_id = int(input().strip())
+    except ValueError:
+        print("*** ERROR *** Invalid attendee ID")
+        return
+    
+    try:
+        cursor = mysql_connection.cursor(dictionary=True)
+        sqlite_check = "SELECT attendeeName FROM attendee WHERE attendeeID = %s"
+        cursor.execute(sqlite_check, (attendee_id,))
+        sqlite_result = cursor.fetchone()
+        cursor.close()
+        
+        if not sqlite_result:
+            print("*** ERROR *** Attendee does not exist")
+            return
+        
+        attendee_name = sqlite_result['attendeeName']
+        print(f"Attendee Name: {attendee_name}")
+        print("-" * 21)
+        
+        # Query Neo4j for connected attendees (bidirectional)
+        with neo4j_driver.session(database=config.NEO4J_DATABASE) as session:
+            neo4j_query = """
+            MATCH (a:Attendee {AttendeeID: $id})
+            OPTIONAL MATCH (a)-[:CONNECTED_TO]-(connected:Attendee)
+            RETURN COLLECT(DISTINCT connected.AttendeeID) as connected_ids
+            """
+            
+            result = session.run(neo4j_query, {"id": attendee_id})
+            record = result.single()
+            
+            if record and record['connected_ids']:
+                connected_ids = record['connected_ids']
+                print("These attendees are connected:")
+                
+                # Query MySQL to get the names
+                placeholders = ','.join(['%s'] * len(connected_ids))
+                name_query = f"SELECT attendeeID, attendeeName FROM attendee WHERE attendeeID IN ({placeholders}) ORDER BY attendeeID"
+                
+                cursor = mysql_connection.cursor(dictionary=True)
+                cursor.execute(name_query, connected_ids)
+                name_results = cursor.fetchall()
+                cursor.close()
+                
+                for row in name_results:
+                    print(f"{row['attendeeID']} | {row['attendeeName']}")
+            else:
+                print("No connections")
+    
+    except (MySQLError, Neo4jError) as err:
+        print(f"*** ERROR *** {err}")
+
 
 def initialize_databases():
     """Initialize database connections"""
