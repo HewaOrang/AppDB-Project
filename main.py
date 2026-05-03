@@ -265,6 +265,77 @@ def option_4_view_connected_attendees():
         print(f"*** ERROR *** {err}")
 
 
+def option_5_add_attendee_connection():
+    """Option 5: Add Attendee Connection"""
+    if not neo4j_available:
+        print("*** ERROR *** Neo4j is not available. Start Neo4j to use this feature.")
+        return
+    
+    print("Enter Attendee 1 ID : ", end="")
+    try:
+        attendee_1_id = int(input().strip())
+    except ValueError:
+        print("*** ERROR *** Attendee IDs must be numbers")
+        return
+    
+    print("Enter Attendee 2 ID : ", end="")
+    try:
+        attendee_2_id = int(input().strip())
+    except ValueError:
+        print("*** ERROR *** Attendee IDs must be numbers")
+        return
+    
+    # Check if same attendee
+    if attendee_1_id == attendee_2_id:
+        print("*** ERROR *** An attendee cannot connect to him/herself")
+        print("Enter Attendee 1 ID : ")
+        return
+    
+    try:
+        # Check if both attendees exist in MySQL
+        cursor = mysql_connection.cursor(dictionary=True)
+        check_query = "SELECT attendeeID FROM attendee WHERE attendeeID IN (%s, %s)"
+        cursor.execute(check_query, (attendee_1_id, attendee_2_id))
+        results = cursor.fetchall()
+        cursor.close()
+        
+        if len(results) != 2:
+            print("*** ERROR *** One or both attendee IDs do not exist")
+            print("Enter Attendee 1 ID : ")
+            return
+        
+        # Check if connection already exists in Neo4j (bidirectional check)
+        with neo4j_driver.session(database=config.NEO4J_DATABASE) as session:
+            check_connection = """
+            MATCH (a:Attendee {AttendeeID: $id1})-[:CONNECTED_TO]-(b:Attendee {AttendeeID: $id2})
+            RETURN COUNT(*) as count
+            """
+            
+            result = session.run(check_connection, {"id1": attendee_1_id, "id2": attendee_2_id})
+            record = result.single()
+            
+            if record and record['count'] > 0:
+                print("*** ERROR *** These attendees are already connected")
+                print("Enter Attendee 1 ID : ")
+                return
+            
+            # Create bidirectional connection
+            create_connection = """
+            MERGE (a:Attendee {AttendeeID: $id1})
+            MERGE (b:Attendee {AttendeeID: $id2})
+            CREATE (a)-[:CONNECTED_TO]->(b)
+            CREATE (b)-[:CONNECTED_TO]->(a)
+            """
+            
+            session.run(create_connection, {"id1": attendee_1_id, "id2": attendee_2_id})
+        
+        print(f"Attendee {attendee_1_id} is now connected to Attendee {attendee_2_id}")
+    
+    except (MySQLError, Neo4jError) as err:
+        print(f"*** ERROR *** {err}")
+        print("Enter Attendee 1 ID : ")
+
+
 def initialize_databases():
     """Initialize database connections"""
     global mysql_connection, neo4j_driver, neo4j_available
