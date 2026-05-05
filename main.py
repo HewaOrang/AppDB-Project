@@ -336,6 +336,29 @@ def option_5_add_attendee_connection():
         print("Enter Attendee 1 ID : ")
 
 
+def option_6_view_rooms():
+    """Option 6: View Rooms"""
+    global rooms_cache
+    
+    # Only fetch rooms once and cache them
+    if rooms_cache is None:
+        try:
+            cursor = mysql_connection.cursor(dictionary=True)
+            query = "SELECT roomID, roomName, capacity FROM room ORDER BY roomID"
+            cursor.execute(query)
+            rooms_cache = cursor.fetchall()
+            cursor.close()
+        except MySQLError as err:
+            print(f"*** ERROR *** {err}")
+            return
+    
+    print("RoomID | RoomName | Capacity")
+    
+    if rooms_cache:
+        for row in rooms_cache:
+            print(f"{row['roomID']} | {row['roomName']} | {row['capacity']}")
+
+
 def initialize_databases():
     """Initialize database connections"""
     global mysql_connection, neo4j_driver, neo4j_available
