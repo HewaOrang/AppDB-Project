@@ -219,16 +219,16 @@ def option_4_view_connected_attendees():
     
     try:
         cursor = mysql_connection.cursor(dictionary=True)
-        sqlite_check = "SELECT attendeeName FROM attendee WHERE attendeeID = %s"
-        cursor.execute(sqlite_check, (attendee_id,))
-        sqlite_result = cursor.fetchone()
+        mysql_check = "SELECT attendeeName FROM attendee WHERE attendeeID = %s"
+        cursor.execute(mysql_check, (attendee_id,))
+        mysql_result = cursor.fetchone()
         cursor.close()
         
-        if not sqlite_result:
+        if not mysql_result:
             print("*** ERROR *** Attendee does not exist")
             return
         
-        attendee_name = sqlite_result['attendeeName']
+        attendee_name = mysql_result['attendeeName']
         print(f"Attendee Name: {attendee_name}")
         print("-" * 21)
         
